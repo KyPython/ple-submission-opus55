@@ -68,7 +68,19 @@ NOTE = (
     " access. Read the whole instruction and the files it points to, put every"
     " deliverable exactly where and in the format the instruction asks, and"
     " check what you wrote. When you are done, reply with a short summary of"
-    " what you delivered and where."
+    " what you delivered and where. Constraint Register — build it before"
+    " optimizing anything: (1) List every stated limit (numbers, formats,"
+    " sizes, deadlines); mark each hard or soft. Item score is 0.4·p +"
+    " 0.6·G·O' (G=1 iff all hard limits hold); one broken hard constraint"
+    " caps the item at 0.4. (2) Verify each hard limit numerically in the"
+    " container before improving the design; never trade a hard limit for a"
+    " better-looking result. (3) If a limit cannot be verified, say so in the"
+    " summary instead of assuming it holds. (4) Cross-File Reconciliation:"
+    " Before finishing, run a python3 self-check verifying that all numbers,"
+    " counts, costs, IDs, and schema keys match across every deliverable"
+    " (CSV/XLSX tables, JSON ledgers, CAD/IFC models, and Markdown"
+    " prose/fenced JSON), and state headline numerical totals cleanly without"
+    " adjacent parenthetical clause numbers."
 )
 
 

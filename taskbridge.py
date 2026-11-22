@@ -509,6 +509,104 @@ def _seconds(value: Any) -> int:
   return min(max(1, int(value)), MAX_TIMEOUT_SEC)
 
 
+SENSITIVE_ENV_VARS = (
+    "GEMINI_API_KEY",
+    "MODEL_API_KEY",
+    "MODEL_PROXY_KEY",
+    "GOOGLE_GEMINI_BASE_URL",
+    "MODEL_BASE_URL",
+    "MODEL_PROXY_URL",
+    "TASK_RELAY_URL",
+)
+_RELAY_URL_TOKEN_RE = re.compile(r"(https?://127\.0\.0\.1:\d+/)([0-9a-f]{16,64})")
+_PROVIDER_SECRET_RE = re.compile(
+    r"\b(?:AIza|sk-(?:ant-|proj-)?|gh[pousr]_|hf_|xox[baprs]-)[A-Za-z0-9_-]{8,}\b"
+)
+
+
+def parse_last_json_dict(output: str) -> dict[str, Any] | None:
+  """Parses a JSON object from mixed stderr/stdout container command output."""
+  text = (output or "").strip()
+  if not text:
+    return None
+  try:
+    parsed = json.loads(text)
+    if isinstance(parsed, dict):
+      return parsed
+  except ValueError:
+    pass
+  for raw_line in reversed(text.splitlines()):
+    line = raw_line.strip()
+    if not line:
+      continue
+    start = line.find("{")
+    while start != -1:
+      try:
+        parsed = json.loads(line[start:])
+        if isinstance(parsed, dict):
+          return parsed
+      except ValueError:
+        pass
+      start = line.find("{", start + 1)
+  return None
+
+
+def redact_secrets(
+    value: Any, *, extra_secrets: tuple[str, ...] | list[str] = ()
+) -> str:
+  """Scrubs known API keys, relay tokens, and sensitive URLs from `value`.
+
+  Args:
+    value: Text or object to convert and sanitize.
+    extra_secrets: Additional secret substrings to redact.
+
+  Returns:
+    Sanitized string with matching secrets replaced by `[REDACTED]`.
+  """
+  text = value if isinstance(value, str) else str(value)
+  candidates: list[str] = []
+  for var in SENSITIVE_ENV_VARS:
+    val = os.environ.get(var, "")
+    if val:
+      candidates.append(val)
+  for item in extra_secrets:
+    if item:
+      candidates.append(item)
+  for secret in sorted(set(candidates), key=len, reverse=True):
+    if len(secret) >= 4:
+      text = text.replace(secret, "[REDACTED]")
+  text = _RELAY_URL_TOKEN_RE.sub(r"\1[REDACTED]", text)
+  text = _PROVIDER_SECRET_RE.sub("[REDACTED]", text)
+  return text
+
+
+def format_audit_record(
+    component: str,
+    tool: str,
+    target: str,
+    status: str,
+    duration_ms: int,
+    detail: str = "",
+    *,
+    bytes_count: int | None = None,
+    extra_secrets: tuple[str, ...] | list[str] = (),
+) -> str:
+  """Formats a structured single-line JSON audit log entry without secrets."""
+  record: dict[str, Any] = {
+      "audit": "mcp_dispatch",
+      "component": component,
+      "tool": tool,
+      "target": redact_secrets(target, extra_secrets=extra_secrets)[:200],
+      "status": status,
+      "duration_ms": max(0, int(duration_ms)),
+  }
+  if bytes_count is not None:
+    record["bytes"] = int(bytes_count)
+  if detail:
+    record["detail"] = redact_secrets(detail, extra_secrets=extra_secrets)[:200]
+  return json.dumps(record, separators=(",", ":"))
+
+
 def mcp_allows(url: str, servers: list[dict[str, Any]]) -> bool:
   """Checks whether `url` is permitted by the evaluator's MCP server rules.
 
